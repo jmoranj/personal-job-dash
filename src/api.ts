@@ -37,6 +37,31 @@ export interface Stats {
   refreshing: boolean
   last_refresh: string | null
   refresh_hours: number
+  companies: { watched: number; with_matches: number; failing: number; candidates_left: number }
+  discovering: boolean
+  last_discovery: string | null
+  last_discovery_report: { from_links: number; candidates_added: number; probed: number; found: number } | null
+}
+
+export interface Company {
+  ats: string
+  slug: string
+  name: string
+  origin: string
+  active: boolean
+  added_at: string
+  last_checked: string | null
+  last_jobs: number
+  last_kept: number
+  error: string | null
+}
+
+export async function fetchCompanies(): Promise<Company[]> {
+  return (await ok(await fetch("/api/companies"))).json()
+}
+
+export async function discover() {
+  await ok(await fetch("/api/discover", { method: "POST" }))
 }
 
 async function ok(r: Response) {

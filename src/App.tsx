@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Bookmark, Check, ExternalLink, Moon, RefreshCw, Sun, X } from "lucide-react"
+import { Bookmark, Building2, Check, ExternalLink, Moon, RefreshCw, Search, Sun, X } from "lucide-react"
 import { toast } from "sonner"
 
-import { fetchJobs, fetchStats, refresh, updateJob, type Job, type Stats, type Status } from "@/api"
+import { discover, fetchCompanies, fetchJobs, fetchStats, refresh, updateJob, type Company, type Job, type Stats, type Status } from "@/api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -53,6 +53,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
   const [notes, setNotes] = useState("")
+  const [companiesOpen, setCompaniesOpen] = useState(false)
+  const [companies, setCompanies] = useState<Company[]>([])
   const [dark, setDark] = useState(() => localStorage.getItem("theme") === "dark")
 
   useEffect(() => {
@@ -81,12 +83,18 @@ export default function App() {
     return () => clearTimeout(t)
   }, [load, q])
 
-  // While a refresh runs on the server, poll until it finishes.
+  // While a search or discovery runs on the server, poll until it finishes.
+  const busy = stats?.refreshing || stats?.discovering
   useEffect(() => {
-    if (!stats?.refreshing) return
+    if (!busy) return
     const t = setInterval(load, 3000)
     return () => clearInterval(t)
-  }, [stats?.refreshing, load])
+  }, [busy, load])
+
+  useEffect(() => {
+    if (!companiesOpen) return
+    fetchCompanies().then(setCompanies).catch((e) => toast(`Couldn't load companies: ${e.message}`))
+  }, [companiesOpen, stats?.companies.watched])
 
   const counts = useMemo(() => Object.fromEntries((stats?.statuses ?? []).map((s) => [s.key, s.n])), [stats])
   const open = jobs.find((j) => j.id === openId) ?? null
@@ -119,6 +127,12 @@ export default function App() {
     }
   }
 
+  async function runDiscover() {
+    await discover()
+    toast("Looking for new company career pages…")
+    setStats((s) => (s ? { ...s, discovering: true } : s))
+  }
+
   async function runRefresh() {
     await refresh()
     toast("Searching all sources…")
@@ -134,12 +148,15 @@ export default function App() {
             Remote software and AI roles you can take from Brazil.{" "}
             {stats && (
               <>
-                {stats.new_last_24h} new in the last 24h · last search {ago(stats.last_refresh ?? stats.sources[0]?.finished_at ?? null)} · runs every {stats.refresh_hours}h
+                {stats.new_last_24h} new in the last 24h · {stats.companies.watched} company career pages watched · last search {ago(stats.last_refresh ?? stats.sources[0]?.finished_at ?? null)} · runs every {stats.refresh_hours}h
               </>
             )}
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setCompaniesOpen(true)}>
+            <Building2 /> Companies
+          </Button>
           <Button variant="outline" size="icon" onClick={() => setDark((d) => !d)} aria-label="Toggle dark mode">
             {dark ? <Sun /> : <Moon />}
           </Button>
@@ -248,6 +265,10 @@ export default function App() {
             </span>
           ))}
           {failing.length > 0 && <span className="text-foreground">{failing.length} source(s) failed; hover to see why</span>}
+          <span>
+            Company pages <span className="tabular-nums">{stats.companies.with_matches}/{stats.companies.watched}</span> with matches
+            {stats.companies.failing > 0 && ` · ${stats.companies.failing} failing`}
+          </span>
         </footer>
       )}
 
@@ -290,6 +311,71 @@ export default function App() {
               </div>
             </>
           )}
+        </SheetContent>
+      </Sheet>
+      <Sheet open={companiesOpen} onOpenChange={setCompaniesOpen}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
+          <SheetHeader>
+            <SheetTitle className="text-xl">Company career pages</SheetTitle>
+            <SheetDescription>
+              Small and medium companies whose own job pages are watched on every search. Discovery finds them in job links,
+              the remoteintech directory (worldwide and Americas hiring) and remote YC startups, then checks Greenhouse, Lever,
+              Ashby and Workable for a page with open jobs. It runs daily.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex flex-col gap-4 px-4 pb-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button onClick={runDiscover} disabled={stats?.discovering}>
+                <Search className={stats?.discovering ? "animate-pulse" : ""} />
+                {stats?.discovering ? "Discovering…" : "Find more companies"}
+              </Button>
+              <span className="text-muted-foreground text-sm">
+                {stats?.companies.watched ?? 0} watched · {stats?.companies.with_matches ?? 0} with matching roles
+                {(stats?.companies.candidates_left ?? 0) > 0 && ` · ${stats?.companies.candidates_left} names still to check`}
+              </span>
+            </div>
+            {stats?.last_discovery_report && (
+              <p className="text-muted-foreground text-xs">
+                Last run {ago(stats.last_discovery)}: {stats.last_discovery_report.from_links} from links,{" "}
+                {stats.last_discovery_report.found} found by checking {stats.last_discovery_report.probed} names.
+              </p>
+            )}
+            <div className="rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Company</TableHead>
+                    <TableHead>Page</TableHead>
+                    <TableHead className="text-right">Matches</TableHead>
+                    <TableHead className="hidden sm:table-cell">Found via</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {companies.map((c) => (
+                    <TableRow key={`${c.ats}:${c.slug}`} className={c.active ? "" : "opacity-50"}>
+                      <TableCell className="font-medium">{c.name || c.slug}</TableCell>
+                      <TableCell className="text-muted-foreground text-xs" title={c.error ?? undefined}>
+                        {c.ats}/{c.slug}
+                        {c.error && " · failing"}
+                        {!c.active && " · paused, no matches for 30 days"}
+                      </TableCell>
+                      <TableCell className="text-right font-mono tabular-nums">
+                        {c.last_checked ? `${c.last_kept}/${c.last_jobs}` : "—"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground hidden text-xs sm:table-cell">{c.origin}</TableCell>
+                    </TableRow>
+                  ))}
+                  {companies.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-muted-foreground py-10 text-center">
+                        No company pages yet. Press Find more companies.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
         </SheetContent>
       </Sheet>
       <Toaster />
