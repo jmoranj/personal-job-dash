@@ -10,6 +10,8 @@ export interface Job {
   location: string
   eligibility: Eligibility
   eligibility_reason: string
+  /** Who decided the eligibility: the keyword rules, or Claude for jobs the rules couldn't decide. */
+  checked_by: "rules" | "claude"
   tags: string[]
   salary: string | null
   posted_at: string | null
@@ -41,6 +43,8 @@ export interface Stats {
   discovering: boolean
   last_discovery: string | null
   last_discovery_report: { from_links: number; candidates_added: number; probed: number; found: number } | null
+  /** Present when Claude checks are on. */
+  ai: { backend: string; running: boolean; checked: number; pending: number; opened: number; closed: number } | null
 }
 
 export interface Company {

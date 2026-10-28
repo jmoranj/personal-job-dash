@@ -40,7 +40,12 @@ function ago(iso: string | null) {
 function EligibilityBadge({ job }: { job: Job }) {
   const label = { yes: "Brazil OK", maybe: "Unclear", no: "Blocked" }[job.eligibility]
   const variant = job.eligibility === "yes" ? "default" : job.eligibility === "maybe" ? "outline" : "secondary"
-  return <Badge variant={variant} title={job.eligibility_reason}>{label}</Badge>
+  const by = job.checked_by === "claude" ? " · Claude" : ""
+  return (
+    <Badge variant={variant} title={`${job.checked_by === "claude" ? "Decided by Claude: " : ""}${job.eligibility_reason}`}>
+      {label}{by}
+    </Badge>
+  )
 }
 
 export default function App() {
@@ -83,8 +88,8 @@ export default function App() {
     return () => clearTimeout(t)
   }, [load, q])
 
-  // While a search or discovery runs on the server, poll until it finishes.
-  const busy = stats?.refreshing || stats?.discovering
+  // While a search, discovery or Claude check runs on the server, poll until it finishes.
+  const busy = stats?.refreshing || stats?.discovering || stats?.ai?.running
   useEffect(() => {
     if (!busy) return
     const t = setInterval(load, 3000)
@@ -269,6 +274,14 @@ export default function App() {
             Company pages <span className="tabular-nums">{stats.companies.with_matches}/{stats.companies.watched}</span> with matches
             {stats.companies.failing > 0 && ` · ${stats.companies.failing} failing`}
           </span>
+          {stats.ai && (
+            <span title={`Runs through ${stats.ai.backend}`}>
+              Claude decided <span className="tabular-nums">{stats.ai.checked}</span> unclear jobs
+              ({stats.ai.opened} open, {stats.ai.closed} blocked)
+              {stats.ai.pending > 0 && ` · ${stats.ai.pending} waiting`}
+              {stats.ai.running && " · checking now…"}
+            </span>
+          )}
         </footer>
       )}
 
@@ -285,7 +298,10 @@ export default function App() {
               <div className="flex flex-col gap-5 px-4 pb-6">
                 <div className="flex flex-wrap items-center gap-2">
                   <EligibilityBadge job={open} />
-                  <span className="text-muted-foreground text-sm">{open.eligibility_reason}</span>
+                  <span className="text-muted-foreground text-sm">
+                    {open.checked_by === "claude" && <span className="text-foreground font-medium">Claude: </span>}
+                    {open.eligibility_reason}
+                  </span>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button render={<a href={open.url} target="_blank" rel="noreferrer" />}>
