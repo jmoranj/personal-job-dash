@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Toaster } from "@/components/ui/sonner"
+import { ApplicationPanel } from "@/ApplicationPanel"
 
 const STATUSES: { key: Status; label: string }[] = [
   { key: "new", label: "New" },
@@ -28,6 +29,12 @@ const ELIGIBILITY = [
   { key: "default", label: "Open + unclear" },
   { key: "all", label: "Everything" },
 ]
+
+/** Applied 6+ days ago with no change since: time to send the follow-up. */
+function followUpDue(job: Job) {
+  if (job.status !== "applied" || !job.status_changed_at) return false
+  return Date.now() - new Date(job.status_changed_at).getTime() > 6 * 86_400_000
+}
 
 function ago(iso: string | null) {
   if (!iso) return "—"
@@ -221,7 +228,10 @@ export default function App() {
               <TableRow key={job.id} className="cursor-pointer" onClick={() => { setOpenId(job.id); setNotes(job.notes) }}>
                 <TableCell className="text-right font-mono tabular-nums">{job.score}</TableCell>
                 <TableCell className="max-w-0 w-full">
-                  <div className="truncate font-medium">{job.title}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="truncate font-medium">{job.title}</span>
+                    {followUpDue(job) && <Badge variant="outline" className="shrink-0">Follow up</Badge>}
+                  </div>
                   <div className="text-muted-foreground truncate text-xs">
                     {job.company}
                     {job.salary && ` · ${job.salary}`}
@@ -311,6 +321,8 @@ export default function App() {
                     <Button key={s.key} variant="outline" size="sm" onClick={() => move(open, s.key)}>{s.label}</Button>
                   ))}
                 </div>
+                <ApplicationPanel key={open.id} jobId={open.id} />
+                <Separator />
                 <div className="text-sm">
                   <div className="text-muted-foreground mb-1 text-xs uppercase tracking-wide">Match {open.score}</div>
                   <div className="flex flex-wrap gap-1">

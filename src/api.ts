@@ -93,3 +93,34 @@ export async function updateJob(id: string, patch: { status?: Status; notes?: st
 export async function refresh() {
   await ok(await fetch("/api/refresh", { method: "POST" }))
 }
+
+export interface Draft {
+  fit: { score: number; summary: string }
+  company_notes: string
+  highlights: { from_cv: string; why_it_matters: string }[]
+  gaps: string[]
+  cover_letter: string
+  contact: { name: string | null; role: string | null; source_url: string | null; how_to_reach: string }
+  outreach_message: string
+  follow_up: string
+  checks: string[]
+  sources: string[]
+}
+
+export interface Application {
+  job_id: string
+  state: "preparing" | "ready" | "failed"
+  draft: Draft | null
+  error: string | null
+  backend: string
+  dollars: number
+  updated_at: string
+}
+
+export async function fetchApplication(jobId: string): Promise<Application | null> {
+  return (await ok(await fetch(`/api/jobs/${encodeURIComponent(jobId)}/application`))).json()
+}
+
+export async function prepareApplication(jobId: string) {
+  await ok(await fetch(`/api/jobs/${encodeURIComponent(jobId)}/application`, { method: "POST" }))
+}
